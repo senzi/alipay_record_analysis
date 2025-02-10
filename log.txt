@@ -1,0 +1,72 @@
+ * Serving Flask app 'app'
+ * Debug mode: on
+2025-02-07 19:16:36,688 - werkzeug - INFO - WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:8080
+2025-02-07 19:16:36,688 - werkzeug - INFO - Press CTRL+C to quit
+2025-02-07 19:16:36,693 - werkzeug - INFO -  * Restarting with watchdog (windowsapi)
+2025-02-07 19:16:37,163 - werkzeug - WARNING -  * Debugger is active!
+2025-02-07 19:16:37,165 - werkzeug - INFO -  * Debugger PIN: 102-884-095
+2025-02-07 19:16:46,811 - werkzeug - INFO - 127.0.0.1 - - [07/Feb/2025 19:16:46] "GET /overview HTTP/1.1" 200 -
+2025-02-07 19:16:46,891 - werkzeug - INFO - 127.0.0.1 - - [07/Feb/2025 19:16:46] "GET /favicon.ico HTTP/1.1" 204 -
+2025-02-07 19:16:46,925 - werkzeug - INFO - 127.0.0.1 - - [07/Feb/2025 19:16:46] "GET /api/overview_data?filter=all HTTP/1.1" 200 -
+2025-02-07 19:17:23,061 - werkzeug - INFO - 127.0.0.1 - - [07/Feb/2025 19:17:23] "GET /overview HTTP/1.1" 200 -
+2025-02-07 19:17:23,119 - __main__ - INFO - 请求年度数据: 2025
+2025-02-07 19:17:23,119 - __main__ - INFO - 数据加载完成，总行数: 3962
+2025-02-07 19:17:23,120 - __main__ - INFO - 当前年份数据行数: 0
+2025-02-07 19:17:23,121 - __main__ - INFO - 上一年数据行数: 1398
+2025-02-07 19:17:23,123 - __main__ - ERROR - 处理年度数据时出错: Object of type int32 is not JSON serializable
+Traceback (most recent call last):
+  File "D:\OneDrive\Python_Codes\Pay_record\app.py", line 786, in yearly_data
+    return jsonify({
+           ^^^^^^^^^
+  File "c:\users\hessel\appdata\local\programs\python\python311\Lib\site-packages\flask\json\__init__.py", line 170, in jsonify
+    return current_app.json.response(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\users\hessel\appdata\local\programs\python\python311\Lib\site-packages\flask\json\provider.py", line 215, in response
+    f"{self.dumps(obj, **dump_args)}\n", mimetype=self.mimetype
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\users\hessel\appdata\local\programs\python\python311\Lib\site-packages\flask\json\provider.py", line 180, in dumps
+    return json.dumps(obj, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\users\hessel\appdata\local\programs\python\python311\Lib\json\__init__.py", line 238, in dumps
+    **kw).encode(obj)
+          ^^^^^^^^^^^
+  File "c:\users\hessel\appdata\local\programs\python\python311\Lib\json\encoder.py", line 202, in encode
+    chunks = list(chunks)
+             ^^^^^^^^^^^^
+  File "c:\users\hessel\appdata\local\programs\python\python311\Lib\json\encoder.py", line 432, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "c:\users\hessel\appdata\local\programs\python\python311\Lib\json\encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  File "c:\users\hessel\appdata\local\programs\python\python311\Lib\json\encoder.py", line 326, in _iterencode_list
+    yield from chunks
+  File "c:\users\hessel\appdata\local\programs\python\python311\Lib\json\encoder.py", line 439, in _iterencode
+    o = _default(o)
+        ^^^^^^^^^^^
+  File "c:\users\hessel\appdata\local\programs\python\python311\Lib\site-packages\flask\json\provider.py", line 120, in _default
+    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+TypeError: Object of type int32 is not JSON serializable
+2025-02-07 19:17:23,125 - werkzeug - INFO -  * Detected change in 'c:\\users\\hessel\\appdata\\local\\programs\\python\\python311\\Lib\\site-packages\\flask\\json\\provider.py', reloading
+2025-02-07 19:17:23,126 - werkzeug - INFO - 127.0.0.1 - - [07/Feb/2025 19:17:23] "GET /api/yearly_data?filter=all HTTP/1.1" 500 -
+2025-02-07 19:17:23,126 - werkzeug - INFO -  * Detected change in 'c:\\users\\hessel\\appdata\\local\\programs\\python\\python311\\Lib\\json\\__init__.py', reloading
+2025-02-07 19:17:23,127 - werkzeug - INFO -  * Detected change in 'c:\\users\\hessel\\appdata\\local\\programs\\python\\python311\\Lib\\json\\encoder.py', reloading
+2025-02-07 19:17:23,152 - werkzeug - INFO - 127.0.0.1 - - [07/Feb/2025 19:17:23] "GET /favicon.ico HTTP/1.1" 204 -
+开始加载支付宝账单数据...
+尝试加载 alipay_record_2021.csv...
+成功加载 alipay_record_2021.csv, 包含 1225 条记录
+尝试加载 alipay_record_2022.csv...
+成功加载 alipay_record_2022.csv, 包含 224 条记录
+尝试加载 alipay_record_2023.csv...
+成功加载 alipay_record_2023.csv, 包含 1115 条记录
+尝试加载 alipay_record_2024.csv...
+成功加载 alipay_record_2024.csv, 包含 1398 条记录
+数据加载完成, 总共 3962 条记录
+数据时间范围: 2021-01-01 03:02:14 到 2024-12-31 21:35:00
+当前年份: 2025
+当前年份数据条数: 0
+上一年数据条数: 1398
+发现上一年数据，计算环比...
+环比数据计算完成
+2025-02-07 19:17:23,369 - werkzeug - INFO -  * Restarting with watchdog (windowsapi)
+2025-02-07 19:17:23,850 - werkzeug - WARNING -  * Debugger is active!
+2025-02-07 19:17:23,852 - werkzeug - INFO -  * Debugger PIN: 102-884-095
