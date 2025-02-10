@@ -4,38 +4,36 @@
 
 ## 功能特点
 
-### 1. 月度分析
+### 1. 年度分析
+- 年度支出趋势图表
+- 环比变化分析
+- 分类占比分布
+- 大额交易统计
+
+### 2. 月度分析
 - 月度支出趋势图表
 - 环比变化分析
 - 3个月移动平均线
 - 交易笔数统计
 
-### 2. 分类分析
-- 月度分类支出堆叠图
+### 3. 分类分析
+- 分类支出趋势图
 - 分类占比饼图
 - 分类详细交易记录
 - 分类趋势分析
 
-### 3. 热力图分析
+### 4. 时间分析
 - 日支出金额热力图
 - 日收入金额热力图
 - 日交易次数热力图
-- 分位数显示
+- 日内时段分布
+- 工作日/周末对比
 
-### 4. 大额交易分析
-- TOP 10/20 大额交易展示
-- 交易详情查看
-- 退款状态标记
-
-### 5. 时间分布分析
-- 日内消费时段分布
-- 工作日/周末消费对比
-- 分类时间分布分析
-
-### 6. 数据筛选
-- 全部交易分析
-- 大额交易分析（>1000元）
-- 小额交易分析（≤1000元）
+### 5. 交易记录
+- 交易明细查看
+- 多维度筛选
+- 分页显示
+- 状态标记
 
 ## 技术栈
 
@@ -46,12 +44,56 @@
 
 ### 前端
 - ECharts: 数据可视化
-- HTML/CSS: 页面布局
+- HTML/CSS: 页面布局（Apple 风格设计）
 - JavaScript: 交互逻辑
+
+## 安装使用
+
+1. 克隆项目
+~~~bash
+git clone https://github.com/hessel2333/alipay_record_analysis.git
+cd alipay_record_analysis
+~~~
+
+2. 创建虚拟环境
+~~~bash
+python -m venv myenv
+source myenv/bin/activate  # Linux/Mac
+myenv\Scripts\activate     # Windows
+~~~
+
+3. 安装依赖
+~~~bash
+pip install -r requirements.txt
+~~~
+
+4. 运行项目
+~~~bash
+python app.py
+~~~
+
+5. 访问 http://localhost:5000
+
+## 项目结构
+~~~
+alipay-record-analysis/
+├── app.py                 # Flask 应用主文件
+├── requirements.txt       # 项目依赖
+├── templates/            # 模板文件目录
+│   ├── base.html        # 基础模板
+│   ├── index.html       # 首页
+│   ├── yearly.html      # 年度分析
+│   ├── monthly.html     # 月度分析
+│   ├── category.html    # 分类分析
+│   ├── time.html        # 时间分析
+│   ├── transactions.html # 交易记录
+│   └── settings.html    # 设置页面
+└── README.md            # 项目说明文档
+~~~
 
 ## 数据要求
 
-系统需要支付宝账单 CSV 文件，要求包含以下字段：
+支持支付宝账单 CSV 文件，包含以下字段：
 - 交易时间
 - 交易分类
 - 收/支
@@ -60,28 +102,15 @@
 - 交易状态
 - 交易对方
 
-## 使用方法
+## 隐私说明
 
-1. 确保系统中已安装 Python 3.x
-2. 安装依赖包：
-~~~bash
-pip install flask pandas
-~~~
+- 所有数据分析均在本地进行
+- 不会收集或存储任何用户数据
+- 支持本地部署，保护隐私安全
 
-3. 将支付宝账单 CSV 文件重命名为 `alipay_record_2024.csv` 并放置在项目根目录
-4. 运行应用：
-~~~bash
-python app.py
-~~~
+## License
 
-5. 在浏览器中访问 `http://localhost:5000`
-
-## 注意事项
-
-- 支持 GBK 编码的支付宝账单文件
-- 自动处理退款和交易关闭状态
-- 支持响应式布局
-- 数据缓存优化
+MIT License
 
 ## 开发计划
 
@@ -91,25 +120,19 @@ python app.py
 - [ ] 添加预算管理功能
 - [ ] 支持多账单合并分析
 
-## 许可证
+## 注意事项
 
-MIT License
+- 支持 GBK 编码的支付宝账单文件
+- 自动处理退款和交易关闭状态
+- 支持响应式布局
+- 数据缓存优化
 
-## 项目结构
+## 更新日志
 
-~~~
-alipay-analysis/
-├── app.py                 # Flask 应用主文件
-├── alipay_record_2024.csv # 支付宝账单数据文件
-├── templates/             # 模板文件目录
-│   ├── base.html         # 基础模板
-│   ├── overview.html     # 总览页面
-│   ├── monthly.html      # 月度分析页面
-│   ├── category.html     # 分类分析页面
-│   ├── time.html         # 时间分析页面
-│   └── transactions.html # 交易记录页面
-└── README.md             # 项目说明文档
-~~~
+### v1.0.0
+- 初始版本发布
+- 基础功能实现
+- 响应式布局支持
 
 ## 页面说明
 

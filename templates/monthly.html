@@ -253,12 +253,11 @@
         <button id="prevMonth" class="month-button">
             <i class="fas fa-chevron-left"></i>
         </button>
-        <span id="currentMonth" class="month-display">2024年3月</span>
+        <span id="currentMonth" class="month-display">2024年1月</span>
         <button id="nextMonth" class="month-button">
             <i class="fas fa-chevron-right"></i>
         </button>
     </div>
-    <div></div>
 </div>
 
 <div class="stats-grid">
@@ -342,9 +341,20 @@
     </div>
 </div>
 
-<select id="yearSelect" class="form-select form-select-lg" style="width: auto; font-size: 1.5rem;">
-</select>
-<select id="monthSelect" class="form-select form-select-lg" style="width: auto; font-size: 1.5rem;">
+<div class="floating-menu">
+    <button class="filter-btn active" data-filter="all">
+        <i class="fas fa-list"></i>
+        所有交易
+    </button>
+    <button class="filter-btn" data-filter="large">
+        <i class="fas fa-arrow-trend-up"></i>
+        仅大额
+    </button>
+    <button class="filter-btn" data-filter="small">
+        <i class="fas fa-arrow-trend-down"></i>
+        仅小额
+    </button>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -765,9 +775,11 @@ document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             
-            // 更新筛选状态并重新加载数据
+            // 更新当前筛选状态
             currentFilter = this.dataset.filter;
-            loadData(currentMonth);
+            
+            // 重新加载数据
+            loadData();
         });
     });
     
