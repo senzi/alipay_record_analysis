@@ -51,8 +51,9 @@ alipay_record_*.csv
 alipay_record.csv
 alipay*.csv
 
-# 忽略所有txt文件
+# 忽略所有txt文件，但不包括requirements.txt
 *.txt
+!requirements.txt
 
 # 忽略所有sh文件
 *.sh
