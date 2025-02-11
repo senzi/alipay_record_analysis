@@ -164,6 +164,56 @@ def time():
 def transactions():
     return render_template('transactions.html', active_page='transactions')
 
+@app.route('/insights')
+@check_data_exists
+def insights():
+    return render_template('insights.html', active_page='insights')
+
+@app.route('/analysis')
+@check_data_exists
+def analysis():
+    return render_template('analysis.html', active_page='analysis')
+
+@app.route('/api/analysis')
+def get_analysis():
+    try:
+        df = load_alipay_data()
+        
+        # 获取年份参数
+        year = request.args.get('year', type=int)
+        if year:
+            df = df[df['交易时间'].dt.year == year]
+        
+        # 商家分析
+        merchant_analysis = analyze_merchants(df)
+        
+        # 消费场景分析 
+        scenario_analysis = analyze_scenarios(df)
+        
+        # 消费习惯分析
+        habit_analysis = analyze_habits(df)
+        
+        # 智能标签
+        tags = generate_smart_tags(df)
+        
+        # 分析支付方式
+        payment_analysis = analyze_payment_methods(df)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'merchant_analysis': merchant_analysis,
+                'scenario_analysis': scenario_analysis,
+                'habit_analysis': habit_analysis,
+                'tags': tags,
+                'payment_analysis': payment_analysis
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Analysis error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/api/monthly_analysis')
 def monthly_analysis():
     df = load_alipay_data()
@@ -1544,6 +1594,250 @@ def get_available_years():
             'success': False,
             'error': f'获取可用年份失败: {str(e)}'
         }), 500
+
+def analyze_merchants(df):
+    """商家消费分析"""
+    # 只分析支出数据
+    expense_df = df[df['收/支'] == '支出']
+    
+    # 按商家分组统计
+    merchant_stats = expense_df.groupby('交易对方').agg({
+        '金额': ['count', 'sum', 'mean'],
+        '交易时间': lambda x: (x.max() - x.min()).days + 1  # 交易跨度
+    }).round(2)
+    
+    merchant_stats.columns = ['交易次数', '总金额', '平均金额', '交易跨度']
+    
+    # 识别常客商家(最近3个月有2次以上消费)
+    recent_date = df['交易时间'].max()
+    three_months_ago = recent_date - pd.Timedelta(days=90)
+    recent_df = expense_df[expense_df['交易时间'] >= three_months_ago]
+    
+    frequent_merchants = []
+    for merchant, group in recent_df.groupby('交易对方'):
+        if len(group) >= 2:
+            frequent_merchants.append({
+                'name': merchant,
+                'amount': group['金额'].sum(),
+                'count': len(group),
+                'last_visit': group['交易时间'].max().strftime('%Y-%m-%d')
+            })
+    
+    # 按消费金额排序
+    frequent_merchants.sort(key=lambda x: x['amount'], reverse=True)
+    
+    return {
+        'merchant_stats': merchant_stats.to_dict('index'),
+        'frequent_merchants': frequent_merchants[:10]  # 只返回前10个常客商家
+    }
+
+def analyze_scenarios(df):
+    """消费场景分析"""
+    # 创建副本避免 SettingWithCopyWarning
+    expense_df = df[df['收/支'] == '支出'].copy()
+    
+    # 1. 线上/线下消费
+    online_keywords = [
+        '淘宝', '天猫', '京东', '拼多多', '美团', '饿了么', 'App Store', 'Steam', 
+        'Apple Music', 'iCloud', '网易', '支付宝', '微信', '闲鱼', '得物'
+    ]
+    expense_df.loc[:, '消费场景'] = expense_df['交易对方'].apply(
+        lambda x: '线上' if any(k in str(x) for k in online_keywords) else '线下'
+    )
+    
+    # 2. 消费时段分析
+    expense_df.loc[:, '消费时段'] = expense_df['交易时间'].dt.hour.map(
+        lambda x: '清晨(6-9点)' if 6 <= x < 9
+        else '上午(9-12点)' if 9 <= x < 12
+        else '中午(12-14点)' if 12 <= x < 14
+        else '下午(14-17点)' if 14 <= x < 17
+        else '傍晚(17-20点)' if 17 <= x < 20
+        else '晚上(20-23点)' if 20 <= x < 23
+        else '深夜(23-6点)'
+    )
+    
+    # 3. 消费金额层级
+    expense_df.loc[:, '消费层级'] = expense_df['金额'].map(
+        lambda x: '大额(1000+)' if x >= 1000
+        else '中额(300-1000)' if x >= 300
+        else '小额(100-300)' if x >= 100
+        else '零花(0-100)'
+    )
+    
+    # 汇总各维度的统计数据
+    scenario_stats = []
+    
+    # 添加线上/线下统计
+    online_stats = expense_df.groupby('消费场景')['金额'].sum()
+    for scene, amount in online_stats.items():
+        scenario_stats.append({
+            'name': scene,
+            'value': float(amount),
+            'category': '渠道'
+        })
+    
+    # 添加时段统计
+    time_stats = expense_df.groupby('消费时段')['金额'].sum()
+    for period, amount in time_stats.items():
+        scenario_stats.append({
+            'name': period,
+            'value': float(amount),
+            'category': '时段'
+        })
+    
+    # 添加金额层级统计
+    level_stats = expense_df.groupby('消费层级')['金额'].sum()
+    for level, amount in level_stats.items():
+        scenario_stats.append({
+            'name': level,
+            'value': float(amount),
+            'category': '层级'
+        })
+    
+    return scenario_stats
+
+def analyze_habits(df):
+    """消费习惯分析"""
+    expense_df = df[df['收/支'] == '支出'].copy()
+    
+    # 1. 基础统计
+    daily_expenses = expense_df.groupby(expense_df['交易时间'].dt.date)['金额'].sum()
+    daily_avg = float(daily_expenses.mean())
+    active_days = int(len(daily_expenses))
+    
+    # 2. 计算周末消费比例
+    weekend_expenses = expense_df[expense_df['交易时间'].dt.dayofweek.isin([5, 6])]['金额'].sum()
+    weekend_ratio = float((weekend_expenses / expense_df['金额'].sum() * 100))
+    
+    # 3. 计算固定支出比例
+    monthly_recurring = expense_df.groupby(['交易对方', expense_df['交易时间'].dt.month]).size()
+    recurring_merchants = monthly_recurring[monthly_recurring >= 2].index.get_level_values(0).unique()
+    fixed_expenses = expense_df[expense_df['交易对方'].isin(recurring_merchants)]['金额'].sum()
+    fixed_ratio = float((fixed_expenses / expense_df['金额'].sum() * 100))
+    
+    # 4. 计算月初消费比例
+    month_start = expense_df[expense_df['交易时间'].dt.day <= 5]['金额'].sum()
+    month_start_ratio = float((month_start / expense_df['金额'].sum() * 100))
+    
+    return {
+        'daily_avg': round(daily_avg, 2),
+        'active_days': active_days,
+        'weekend_ratio': round(weekend_ratio, 1),
+        'fixed_expenses': round(fixed_ratio, 1),
+        'month_start_ratio': round(month_start_ratio, 1)
+    }
+
+def generate_smart_tags(df):
+    """智能标签生成"""
+    expense_df = df[df['收/支'] == '支出']
+    result = {
+        'tags': [],
+        'time_pattern': '',
+        'spending_preference': '',
+        'spending_pattern': '',
+        'spending_power': ''
+    }
+    
+    # 计算总体消费情况
+    total_expense = expense_df['金额'].sum()
+    avg_expense = expense_df['金额'].mean()
+    daily_expense = expense_df.groupby(expense_df['交易时间'].dt.date)['金额'].sum().mean()
+    
+    # 时间模式分析
+    hour_stats = expense_df.groupby(expense_df['交易时间'].dt.hour).size()
+    peak_hours = hour_stats[hour_stats > hour_stats.mean()].index.tolist()
+    
+    if 22 in peak_hours or 23 in peak_hours:
+        result['tags'].append('夜间消费达人')
+        result['time_pattern'] = '您偏好在夜间消费，要注意作息哦'
+    elif 6 in peak_hours or 7 in peak_hours:
+        result['tags'].append('早起达人')
+        result['time_pattern'] = '您是个早起消费的生活达人'
+    else:
+        result['time_pattern'] = '您的消费时间比较规律，集中在日间'
+    
+    # 消费偏好分析
+    category_ratio = expense_df.groupby('交易分类')['金额'].sum() / total_expense
+    top_categories = category_ratio[category_ratio > 0.15].index.tolist()
+    
+    preference_desc = []
+    for category in top_categories:
+        result['tags'].append(f'{category}控')
+        preference_desc.append(f'{category}({(category_ratio[category]*100):.1f}%)')
+    
+    result['spending_preference'] = f"最常消费的品类是{', '.join(preference_desc)}"
+    
+    # 消费规律分析
+    daily_expenses = expense_df.groupby(expense_df['交易时间'].dt.date)['金额'].sum()
+    cv = daily_expenses.std() / daily_expenses.mean()
+    
+    if cv < 0.5:
+        result['tags'].append('消费稳健派')
+        result['spending_pattern'] = '您的消费非常有规律，是个理性消费者'
+    elif cv < 0.8:
+        result['tags'].append('平衡消费派')
+        result['spending_pattern'] = '您的消费较为均衡，适度有波动'
+    else:
+        result['tags'].append('随性消费派')
+        result['spending_pattern'] = '您的消费比较随性，可能需要更多预算管理'
+    
+    # 消费能力分析
+    if daily_expense > 500:
+        result['tags'].append('高消费人群')
+        result['spending_power'] = f'日均消费{daily_expense:.0f}元，属于高消费人群'
+    elif daily_expense > 200:
+        result['tags'].append('中等消费人群')
+        result['spending_power'] = f'日均消费{daily_expense:.0f}元，消费能力适中'
+    else:
+        result['tags'].append('理性消费人群')
+        result['spending_power'] = f'日均消费{daily_expense:.0f}元，消费比较节制'
+    
+    return result
+
+def analyze_payment_methods(df):
+    """分析支付方式的使用情况"""
+    expense_df = df[df['收/支'] == '支出'].copy()
+    
+    # 清理和标准化支付方式名称
+    def standardize_payment_method(method):
+        method = str(method).split('(')[0].strip()
+        # 统一支付方式名称
+        if '余额宝' in method or '红包' in method:
+            return '余额宝'
+        return method
+    
+    expense_df['支付方式'] = expense_df['收/付款方式'].apply(standardize_payment_method)
+    
+    # 基础统计
+    payment_stats = expense_df.groupby('支付方式').agg({
+        '金额': ['count', 'sum', 'mean'],
+        '交易时间': lambda x: x.dt.date.nunique()  # 使用天数
+    })
+    
+    # 重命名列
+    payment_stats.columns = ['交易次数', '总金额', '平均金额', '使用天数']
+    
+    # 计算使用频率和金额占比
+    total_amount = float(expense_df['金额'].sum())  # 转换为 float
+    total_count = int(len(expense_df))  # 转换为 int
+    
+    # 转换为列表格式
+    payment_list = []
+    for method, stats in payment_stats.iterrows():
+        payment_list.append({
+            'name': method,
+            'transaction_count': int(stats['交易次数']),  # 转换为 int
+            'total_amount': float(stats['总金额']),  # 转换为 float
+            'avg_amount': float(stats['平均金额']),  # 转换为 float
+            'usage_days': int(stats['使用天数']),  # 转换为 int
+            'amount_ratio': float(stats['总金额'] / total_amount * 100),  # 转换为 float
+            'count_ratio': float(stats['交易次数'] / total_count * 100)  # 转换为 float
+        })
+    
+    # 按总金额排序
+    payment_list.sort(key=lambda x: x['total_amount'], reverse=True)
+    
+    return payment_list
 
 if __name__ == '__main__':
     app.config['TEMPLATES_AUTO_RELOAD'] = True

@@ -775,6 +775,10 @@
                     <i class="fas fa-clock"></i>
                     <span>时间分析</span>
                 </a>
+                <a href="{{ url_for('insights') }}" class="nav-item {% if active_page == 'insights' %}active{% endif %}">
+                    <i class="fas fa-project-diagram"></i>
+                    <span>消费洞察</span>
+                </a>
                 <a href="{{ url_for('transactions') }}" class="nav-item {% if active_page == 'transactions' %}active{% endif %}">
                     <i class="fas fa-list"></i>
                     <span>交易记录</span>
