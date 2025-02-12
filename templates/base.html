@@ -37,6 +37,12 @@
             '信用借还': '#FF6482',      // Apple 玫瑰红
             '母婴亲子': '#40C8E0',      // Apple 湖蓝色
             
+            // 添加收入分类颜色
+            '收入': '#34C759',      // Apple 绿色
+            '转账红包': '#FF9500',      // Apple 橙色
+            '保险': '#007AFF',      // Apple 蓝色
+            '其他': '#FF3B30',      // Apple 红色
+            
             // 默认类别
             '其他': '#8E8E93'           // Apple 中性灰
         };
@@ -111,24 +117,23 @@
             letter-spacing: -0.022em;
         }
 
+        /* 修改主容器布局 */
         .app-container {
             display: flex;
             min-height: 100vh;
         }
 
-        /* 侧边栏样式 */
+        /* 修改侧边栏样式 */
         .sidebar {
-            width: var(--sidebar-width);
-            background: var(--card-bg);
             position: fixed;
-            height: 100vh;
             left: 0;
             top: 0;
+            bottom: 0;
+            width: var(--sidebar-width);
+            background: var(--card-bg);
             border-right: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            backdrop-filter: saturate(180%) blur(20px);
-            background-color: rgba(255, 255, 255, 0.7);
+            z-index: 1000;
+            overflow-y: auto;
         }
 
         .logo {
@@ -180,12 +185,13 @@
             font-size: 16px;
         }
 
-        /* 主内容区域样式 */
-        .main-content {
-            margin-left: var(--sidebar-width);
-            flex: 1;
+        /* 修改主内容区域样式 */
+        .content {
+            flex: 1;  /* 让内容区域填充剩余空间 */
+            margin-left: var(--sidebar-width);  /* 为侧边栏留出空间 */
             padding: 20px;
-            max-width: 1280px;
+            background: var(--bg-color);
+            min-height: 100vh;
         }
 
         /* 卡片样式 */
@@ -197,6 +203,8 @@
             padding: 24px;
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
                         box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .card:hover {
@@ -209,6 +217,8 @@
             grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
             gap: 24px;
             margin-bottom: 24px;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .stat-card {
@@ -255,27 +265,8 @@
 
         /* 响应式调整 */
         @media (max-width: 768px) {
-            .sidebar {
-                width: 60px;
-                backdrop-filter: none;
-                background-color: var(--card-bg);
-            }
-            .main-content {
-                margin-left: 60px;
-            }
-            .logo span {
-                display: none;
-            }
-            .nav-item span {
-                display: none;
-            }
-            .nav-item {
-                padding: 12px;
-                margin: 4px;
-                justify-content: center;
-            }
-            .nav-item i {
-                margin: 0;
+            .content {
+                margin-left: 60px;  /* 移动端侧边栏宽度 */
             }
         }
 
@@ -363,7 +354,7 @@
             letter-spacing: -0.016em;
         }
 
-        /* 优化弹窗样式 */
+        /* 修改弹窗样式 */
         .modal {
             position: fixed;
             top: 0;
@@ -374,18 +365,20 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 999;  /* 调整 z-index */
+            z-index: 1100;  /* 增加 z-index，确保高于导航栏 */
         }
 
         .modal-content {
             background: var(--card-bg);
-            border-radius: 16px;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
             width: 90%;
-            max-width: 1000px;
-            max-height: 80vh;
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+            max-width: 1400px;
+            max-height: 90vh;
             display: flex;
             flex-direction: column;
+            margin-left: var(--sidebar-width);  /* 添加这行，为侧边栏留出空间 */
+            margin-right: 20px;  /* 添加这行，右侧留出一些空间 */
         }
 
         .modal-header {
@@ -427,19 +420,19 @@
         .modal-body {
             padding: 24px;
             overflow-y: auto;
+            flex: 1;
         }
 
-        /* 优化表格样式 */
+        /* 修改表格容器样式 */
         .transaction-table {
             width: 100%;
-            overflow-x: auto;
+            overflow-x: auto;  /* 添加横向滚动 */
         }
 
         .transaction-table table {
             width: 100%;
             border-collapse: collapse;
-            font-family: var(--font-family-text);
-            font-size: 14px;
+            white-space: nowrap;  /* 防止内容换行 */
         }
 
         .transaction-table th,
@@ -699,7 +692,7 @@
                 transform: translateX(0);
             }
 
-            .main-content {
+            .content {
                 margin-left: 0;
                 padding: 16px;
             }
@@ -743,6 +736,18 @@
 
         .error-message i {
             font-size: 16px;
+        }
+
+        /* 移除之前的 container 样式 */
+        .container {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* 移除之前的 max-width 限制 */
+        .card, .stats-grid {
+            width: 100%;
+            box-sizing: border-box;
         }
     </style>
     {% block head %}{% endblock %}
@@ -789,7 +794,7 @@
                 </a>
             </nav>
         </div>
-        <main class="main-content">
+        <main class="content">
             {% block content %}{% endblock %}
         </main>
     </div>
@@ -1155,9 +1160,9 @@
         if (container) {
             container.insertBefore(errorDiv, container.firstChild);
         } else {
-            document.querySelector('.main-content').insertBefore(
+            document.querySelector('.content').insertBefore(
                 errorDiv, 
-                document.querySelector('.main-content').firstChild
+                document.querySelector('.content').firstChild
             );
         }
         

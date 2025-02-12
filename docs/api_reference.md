@@ -124,6 +124,28 @@ Query Parameters:
   - keyword: 搜索关键词
 ~~~
 
+### 2.6 分类详情
+~~~http
+GET /api/category_detail/{month}/{category}
+Query Parameters:
+  - min_amount: 最小金额（可选）
+  - max_amount: 最大金额（可选）
+  - weekend_only: 是否仅周末（可选，boolean）
+~~~
+
+**响应示例：**
+~~~json
+[
+    {
+        "time": "2024-03-15 12:30:45",
+        "description": "午餐",
+        "counterparty": "某餐厅",
+        "amount": 35.50,
+        "status": "交易成功"
+    }
+]
+~~~
+
 ## 3. 会话管理 API
 
 ### 3.1 获取会话状态
