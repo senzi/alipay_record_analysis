@@ -118,6 +118,10 @@ def validate_dataframe(df):
 def check_data_exists(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # 如果是 settings 页面，不需要检查数据
+        if request.endpoint == 'settings':
+            return f(*args, **kwargs)
+            
         if 'user_id' not in session:
             return redirect(url_for('settings'))
             
@@ -1389,19 +1393,7 @@ def get_available_dates():
 
 @app.route('/settings')
 def settings():
-    # 检查是否有数据
-    session_dir = get_session_dir()
-    has_data = False
-    if os.path.exists(session_dir):
-        for filename in os.listdir(session_dir):
-            if filename.endswith('.csv'):
-                has_data = True
-                break
-    
-    # 传递数据状态到模板
-    return render_template('settings.html', 
-                         active_page='settings',
-                         show_upload_notice=not has_data)  # 添加这个参数
+    return render_template('settings.html', active_page='settings')
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
