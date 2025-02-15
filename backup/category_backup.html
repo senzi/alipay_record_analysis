@@ -699,7 +699,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelector('.range-btn[data-range="year"]').classList.add('active');
     document.querySelector('.range-btn[data-range="month"]').classList.remove('active');
 
-    // 添加时间控制相关函数
+    // 修改时间显示函数
     function updateTimeDisplay() {
         const timeDisplay = document.getElementById('timeDisplay');
         const prevBtn = document.getElementById('prevTime');
@@ -721,34 +721,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 timeDisplay.textContent = `${currentYear}年${currentMonth}月`;
             }
         }
-    }
-    
-    function updateTimeControls() {
-        const prevBtn = document.getElementById('prevTime');
-        const nextBtn = document.getElementById('nextTime');
         
-        if (currentTimeRange === 'all') {
-            prevBtn.disabled = true;
-            nextBtn.disabled = true;
-            return;
-        }
-        
-        if (currentTimeRange === 'year') {
-            const minYear = Math.min(...availableYears);
-            const maxYear = Math.max(...availableYears);
-            prevBtn.disabled = currentYear <= minYear;
-            nextBtn.disabled = currentYear >= maxYear;
-        } else if (currentTimeRange === 'month') {
-            const currentYearMonths = availableMonths[currentYear] || [];
-            const minMonth = Math.min(...currentYearMonths);
-            const maxMonth = Math.max(...currentYearMonths);
-            
-            const isFirstMonth = currentMonth <= minMonth && currentYear <= Math.min(...availableYears);
-            const isLastMonth = currentMonth >= maxMonth && currentYear >= Math.max(...availableYears);
-            
-            prevBtn.disabled = isFirstMonth;
-            nextBtn.disabled = isLastMonth;
-        }
+        // 更新范围按钮状态
+        document.querySelectorAll('.range-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.range === currentTimeRange);
+        });
     }
     
     // 修改范围切换按钮事件处理
@@ -775,9 +752,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // 恢复 backup 版本的时间相关函数
+    // 加载可用日期范围
     function loadAvailableDates() {
-        fetch('/api/category_available_dates')
+        fetch('/api/available_dates')
             .then(response => response.json())
             .then(data => {
                 availableYears = data.years;
@@ -790,12 +767,39 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 updateTimeDisplay();
                 updateTimeControls();
-                loadCategories();  // 加载分类数据
-            })
-            .catch(error => {
-                console.error('Error loading available dates:', error);
-                showToast('加载日期数据失败，请重试');
+                
+                // 加载分类列表，并在回调中加载默认分类的数据
+                loadCategories();
             });
+    }
+    
+    // 更新时间控制按钮状态
+    function updateTimeControls() {
+        const prevBtn = document.getElementById('prevTime');
+        const nextBtn = document.getElementById('nextTime');
+        
+        if (currentTimeRange === 'all') {
+            prevBtn.disabled = true;
+            nextBtn.disabled = true;
+            return;
+        }
+        
+        if (currentTimeRange === 'year') {
+            const minYear = Math.min(...availableYears);
+            const maxYear = Math.max(...availableYears);
+            prevBtn.disabled = currentYear <= minYear;
+            nextBtn.disabled = currentYear >= maxYear;
+        } else if (currentTimeRange === 'month') {
+            const currentYearMonths = availableMonths[currentYear] || [];
+            const minMonth = Math.min(...currentYearMonths);
+            const maxMonth = Math.max(...currentYearMonths);
+            
+            const isFirstMonth = currentMonth <= minMonth && currentYear <= Math.min(...availableYears);
+            const isLastMonth = currentMonth >= maxMonth && currentYear >= Math.max(...availableYears);
+            
+            prevBtn.disabled = isFirstMonth;
+            nextBtn.disabled = isLastMonth;
+        }
     }
     
     // 修改时间切换按钮事件

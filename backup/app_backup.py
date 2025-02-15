@@ -118,6 +118,10 @@ def validate_dataframe(df):
 def check_data_exists(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # 如果是 settings 页面，不需要检查数据
+        if request.endpoint == 'settings':
+            return f(*args, **kwargs)
+            
         if 'user_id' not in session:
             return redirect(url_for('settings'))
             
@@ -278,7 +282,6 @@ def category_expenses():
 
 @app.route('/api/transactions')
 def get_transactions():
-    """获取交易记录，支持多种筛选条件和分页"""
     try:
         df = load_alipay_data()
         
@@ -295,7 +298,13 @@ def get_transactions():
         min_amount = request.args.get('min_amount', type=float)
         max_amount = request.args.get('max_amount', type=float)
         
+        # 获取交易类型参数（收入/支出）
+        type = request.args.get('type')
+        
         # 应用筛选条件
+        if type:
+            df = df[df['收/支'] == type]  # 根据收入/支出类型筛选
+        
         if year:
             df = df[df['交易时间'].dt.year == year]
         if month:
@@ -313,6 +322,9 @@ def get_transactions():
             
         # 排除"不计收支"的交易
         df = df[df['收/支'].isin(['收入', '支出'])]
+        
+        # 排除退款交易
+        df = df[~df['是否退款']]
         
         # 按时间倒序排序
         df = df.sort_values('交易时间', ascending=False)
@@ -1381,19 +1393,7 @@ def get_available_dates():
 
 @app.route('/settings')
 def settings():
-    # 检查是否有数据
-    session_dir = get_session_dir()
-    has_data = False
-    if os.path.exists(session_dir):
-        for filename in os.listdir(session_dir):
-            if filename.endswith('.csv'):
-                has_data = True
-                break
-    
-    # 传递数据状态到模板
-    return render_template('settings.html', 
-                         active_page='settings',
-                         show_upload_notice=not has_data)  # 添加这个参数
+    return render_template('settings.html', active_page='settings')
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -1838,6 +1838,138 @@ def analyze_payment_methods(df):
     payment_list.sort(key=lambda x: x['total_amount'], reverse=True)
     
     return payment_list
+
+@app.route('/api/yearly_analysis')
+def yearly_analysis():
+    try:
+        df = load_alipay_data()
+        year = request.args.get('year', type=int)
+        min_amount = request.args.get('min_amount', type=float)
+        max_amount = request.args.get('max_amount', type=float)
+        
+        # 获取当前年份数据
+        current_year_df = df[df['交易时间'].dt.year == year] if year else df
+        
+        # 获取上一年数据
+        last_year = year - 1 if year else df['交易时间'].dt.year.max() - 1
+        last_year_df = df[df['交易时间'].dt.year == last_year]
+        
+        # 应用金额筛选
+        if min_amount:
+            current_year_df = current_year_df[current_year_df['金额'] >= min_amount]
+            last_year_df = last_year_df[last_year_df['金额'] >= min_amount]
+        if max_amount:
+            current_year_df = current_year_df[current_year_df['金额'] < max_amount]
+            last_year_df = last_year_df[last_year_df['金额'] < max_amount]
+        
+        # 过滤有效交易（排除不计收支和退款）
+        current_expense_df = current_year_df[
+            (current_year_df['收/支'] == '支出') & 
+            (~current_year_df['是否退款'])
+        ]
+        current_income_df = current_year_df[
+            (current_year_df['收/支'] == '收入') & 
+            (~current_year_df['是否退款'])
+        ]
+        
+        last_expense_df = last_year_df[
+            (last_year_df['收/支'] == '支出') & 
+            (~last_year_df['是否退款'])
+        ]
+        last_income_df = last_year_df[
+            (last_year_df['收/支'] == '收入') & 
+            (~last_year_df['是否退款'])
+        ]
+        
+        # 计算当前年份数据
+        current_expense = current_expense_df['金额'].sum()
+        current_income = current_income_df['金额'].sum()
+        current_balance = current_income - current_expense
+        current_count = len(current_expense_df) + len(current_income_df)
+        
+        # 计算上一年数据
+        last_expense = last_expense_df['金额'].sum()
+        last_income = last_income_df['金额'].sum()
+        last_balance = last_income - last_expense
+        last_count = len(last_expense_df) + len(last_income_df)
+        
+        # 生成完整的月份列表（1月到12月）
+        all_months = [f"{year}-{str(month).zfill(2)}" for month in range(1, 13)]
+        
+        # 按月统计支出和收入
+        monthly_expenses = current_expense_df.groupby(
+            current_expense_df['交易时间'].dt.strftime('%Y-%m')
+        )['金额'].sum()
+        monthly_incomes = current_income_df.groupby(
+            current_income_df['交易时间'].dt.strftime('%Y-%m')
+        )['金额'].sum()
+        
+        # 使用生成的月份列表重新索引
+        monthly_expenses = monthly_expenses.reindex(all_months, fill_value=0)
+        monthly_incomes = monthly_incomes.reindex(all_months, fill_value=0)
+        
+        # 计算分类统计
+        category_expenses = current_expense_df.groupby('交易分类')['金额'].sum()
+        category_incomes = current_income_df.groupby('交易分类')['金额'].sum()
+        
+        # 计算年度统计数据
+        yearly_stats = {
+            'balance': float(current_balance),
+            'total_expense': float(current_expense),
+            'total_income': float(current_income),
+            'expense_count': int(len(current_expense_df)),
+            'income_count': int(len(current_income_df)),
+            'total_count': int(current_count),
+            'active_days': int(len(current_year_df['交易时间'].dt.date.unique())),
+            'avg_transaction': float(current_expense_df['金额'].mean()) if len(current_expense_df) > 0 else 0,
+            'avg_daily_expense': float(current_expense / max(1, len(current_year_df['交易时间'].dt.date.unique()))),
+            'avg_monthly_income': float(current_income / 12),
+            'expense_ratio': float(current_expense / current_income * 100) if current_income > 0 else 0,
+            'comparisons': {
+                'balance': {
+                    'change': float(current_balance - last_balance) if len(last_year_df) > 0 else None,
+                    'rate': float((current_balance - last_balance) / abs(last_balance) * 100) if len(last_year_df) > 0 and last_balance != 0 else None
+                },
+                'expense': {
+                    'change': float(current_expense - last_expense) if len(last_year_df) > 0 else None,
+                    'rate': float((current_expense - last_expense) / last_expense * 100) if len(last_year_df) > 0 and last_expense != 0 else None
+                },
+                'income': {
+                    'change': float(current_income - last_income) if len(last_year_df) > 0 else None,
+                    'rate': float((current_income - last_income) / last_income * 100) if len(last_year_df) > 0 and last_income != 0 else None
+                },
+                'count': {
+                    'change': int(current_count - last_count) if len(last_year_df) > 0 else None,
+                    'rate': float((current_count - last_count) / last_count * 100) if len(last_year_df) > 0 and last_count != 0 else None
+                }
+            }
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'trends': {
+                    'months': monthly_expenses.index.tolist(),
+                    'expenses': monthly_expenses.values.tolist(),
+                    'incomes': monthly_incomes.values.tolist()
+                },
+                'categories': {
+                    'expense': {
+                        'names': category_expenses.index.tolist(),
+                        'amounts': category_expenses.values.tolist()
+                    },
+                    'income': {
+                        'names': category_incomes.index.tolist(),
+                        'amounts': category_incomes.values.tolist()
+                    }
+                },
+                'yearly_stats': yearly_stats
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in yearly analysis: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.config['TEMPLATES_AUTO_RELOAD'] = True

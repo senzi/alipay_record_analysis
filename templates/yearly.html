@@ -518,8 +518,16 @@ document.addEventListener('DOMContentLoaded', function() {
         // 更新收支差额卡片
         const balance = stats.balance;
         document.getElementById('yearBalance').textContent = `${formatMoney(Math.abs(balance))} 元`;
-        document.getElementById('balanceStatus').textContent = balance >= 0 ? '收大于支' : '支大于支';
-        document.getElementById('balanceRatio').textContent = `支出占比 ${stats.expense_ratio.toFixed(1)}%`;
+        document.getElementById('balanceStatus').textContent = balance >= 0 ? '收大于支' : '支大于收';
+        
+        // 修改这里：根据收支情况显示不同的比例文本
+        const expenseRatio = (stats.total_expense / stats.total_income * 100).toFixed(1);
+        if (stats.total_expense > stats.total_income) {
+            document.getElementById('balanceRatio').textContent = `超支比例 ${expenseRatio}%`;
+        } else {
+            document.getElementById('balanceRatio').textContent = `支出占比 ${expenseRatio}%`;
+        }
+        
         document.getElementById('yearBalance').style.color = balance >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
         
         // 更新支出卡片

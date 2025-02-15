@@ -377,49 +377,78 @@ function formatMoney(value) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    let trendChart = null;
-    let categoryPieChart = null;
-    let currentMonth = null;
+    let trendChart, categoryPieChart;
+    let currentMonth;
     let availableMonths = [];
-    let currentFilter = 'all';  // 添加筛选状态变量
-    let currentData = null;
+    let currentData = null;  // 添加全局数据变量
+    let currentType = 'expense';  // 添加当前类型变量
+    let currentFilter = 'all';  // 添加当前筛选变量
     
     // 初始化图表
     function initCharts() {
         trendChart = echarts.init(document.getElementById('trendChart'));
         categoryPieChart = echarts.init(document.getElementById('categoryPieChart'));
+        
+        window.addEventListener('resize', function() {
+            trendChart.resize();
+            categoryPieChart.resize();
+        });
     }
     
-    // 修改 loadData 函数，添加筛选参数
-    function loadData(month) {
-        let url = '/api/monthly_data';
-        const params = new URLSearchParams();
-        
-        if (month) {
-            const [year, monthNum] = month.split('-');
-            params.append('year', year);
-            params.append('month', monthNum);
-        }
-        params.append('filter', currentFilter);  // 添加筛选参数
-        
-        url += `?${params.toString()}`;
-        
-        fetch(url)
+    // 添加加载可用月份的函数
+    function loadAvailableMonths() {
+        fetch('/api/available_dates')
             .then(response => response.json())
             .then(data => {
-                if (data.error) {
-                    console.error('加载数据失败:', data.error);
-                    return;
+                availableMonths = data.months;
+                if (availableMonths.length > 0) {
+                    currentMonth = availableMonths[0];  // 设置初始月份为最新月份
+                    loadData();  // 加载数据
                 }
-                
-                currentData = data;
-                currentMonth = data.current_month;
-                availableMonths = data.available_months;
-                updateStats(data);
-                updateCharts(data);
-                updateMonthControls();
             })
-            .catch(error => console.error('加载数据失败:', error));
+            .catch(error => {
+                console.error('Error loading available months:', error);
+                showToast('加载月份数据失败，请重试');
+            });
+    }
+    
+    // 加载数据
+    function loadData(month) {
+        if (month) currentMonth = month;
+        
+        // 添加防护，确保 currentMonth 存在
+        if (!currentMonth) {
+            console.error('No month selected');
+            return;
+        }
+        
+        const [year, monthNum] = currentMonth.split('-');
+        const params = new URLSearchParams({
+            year: year,
+            month: monthNum
+        });
+        
+        // 添加金额筛选参数
+        if (currentFilter === 'large') {
+            params.append('min_amount', '1000');
+        } else if (currentFilter === 'small') {
+            params.append('max_amount', '1000');
+        }
+        
+        fetch(`/api/monthly_analysis?${params}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentData = data.data;  // 保存完整数据到全局变量
+                    updateStats(data.data.stats);  // 修改这里：传入 stats 对象
+                    updateCharts(data.data);
+                    updateMonthControls();
+                }
+            })
+            .catch(error => {
+                console.error('Error loading data:', error);
+                showToast('加载数据失败，请重试');
+            });
     }
     
     // 更新月份控制按钮状态
@@ -439,79 +468,82 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 更新统计卡片
     function updateStats(data) {
-        const stats = data.monthly_stats;
+        const stats = data;
         
         // 更新收支差额卡片
         const balance = stats.balance;
         document.getElementById('monthBalance').textContent = `${formatMoney(Math.abs(balance))} 元`;
         document.getElementById('balanceStatus').textContent = balance >= 0 ? '收大于支' : '支大于收';
-        document.getElementById('balanceRatio').textContent = `支出占比 ${stats.expense_ratio.toFixed(1)}%`;
+        
+        // 修改这里：统一使用 toFixed(1) 显示一位小数
+        const expenseRatio = (stats.total_expense / stats.total_income * 100).toFixed(1);
+        if (stats.total_expense > stats.total_income) {
+            document.getElementById('balanceRatio').textContent = `超支比例 ${expenseRatio}%`;
+        } else {
+            document.getElementById('balanceRatio').textContent = `支出占比 ${expenseRatio}%`;
+        }
+        
         document.getElementById('monthBalance').style.color = balance >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
         
         // 更新收支差额环比
         updateComparison(
             document.querySelector('.stat-card:nth-child(1) .comparison'),
-            stats.balance_change,
-            stats.balance_change_rate,
+            stats.comparisons.balance.change,
+            stats.comparisons.balance.rate,
             '收支差额'
         );
         
         // 更新支出卡片
         document.getElementById('monthExpense').textContent = `${formatMoney(stats.total_expense)} 元`;
         document.getElementById('expenseTrend').textContent = `${stats.expense_count} 笔支出`;
-        document.getElementById('avgDailyExpense').textContent = `日均 ${formatMoney(stats.avg_daily_expense)} 元`;
+        // 统一小数点位数
+        document.getElementById('avgDailyExpense').textContent = `日均 ${formatMoney(stats.total_expense / 30)} 元`;
         
         // 更新支出环比
         updateComparison(
             document.querySelector('.stat-card:nth-child(2) .comparison'),
-            stats.expense_change,
-            stats.expense_change_rate,
+            stats.comparisons.expense.change,
+            stats.comparisons.expense.rate,
             '支出'
         );
         
         // 更新收入卡片
         document.getElementById('monthIncome').textContent = `${formatMoney(stats.total_income)} 元`;
         document.getElementById('incomeTrend').textContent = `${stats.income_count} 笔收入`;
-        document.getElementById('avgIncome').textContent = `平均 ${formatMoney(stats.avg_transaction)} 元/笔`;
+        // 统一小数点位数
+        document.getElementById('avgIncome').textContent = `平均 ${formatMoney(stats.total_income / (stats.income_count || 1))} 元/笔`;
         
         // 更新收入环比
         updateComparison(
             document.querySelector('.stat-card:nth-child(3) .comparison'),
-            stats.income_change,
-            stats.income_change_rate,
+            stats.comparisons.income.change,
+            stats.comparisons.income.rate,
             '收入'
         );
         
         // 更新交易情况卡片
-        document.getElementById('transactionCount').textContent = `${stats.total_count} 笔`;
-        document.getElementById('transactionAvg').textContent = `平均 ${formatMoney(stats.avg_transaction)} 元/笔`;
-        document.getElementById('activeDays').textContent = `${stats.active_days} 个交易日`;
-        
-        // 更新交易笔数环比
-        updateComparison(
-            document.querySelector('.stat-card:nth-child(4) .comparison'),
-            stats.transaction_change,
-            stats.transaction_change_rate,
-            '交易笔数',
-            true
-        );
+        const totalCount = stats.expense_count + stats.income_count;
+        document.getElementById('transactionCount').textContent = `${totalCount} 笔`;
+        // 统一小数点位数
+        document.getElementById('transactionAvg').textContent = `平均 ${formatMoney((stats.total_expense + stats.total_income) / (totalCount || 1))} 元/笔`;
+        document.getElementById('activeDays').textContent = `${30} 个交易日`;
     }
     
     // 更新图表
     function updateCharts(data) {
-        // 获取当前选中的类型（支出/收入）
-        const activeBtn = document.querySelector('.toggle-btn.active');
-        const type = activeBtn ? activeBtn.dataset.type : 'expense'; // 默认为支出
+        if (!data) return;
         
-        // 更新趋势图配置
-        const option = {
+        // 获取当前类型的日期数据
+        const dailyData = data.daily_data[currentType];
+        
+        // 趋势图配置
+        const trendOption = {
             tooltip: {
                 trigger: 'axis',
                 axisPointer: {
-                    type: 'shadow'  // 改用阴影指示器
+                    type: 'shadow'
                 },
-                confine: true,     // 确保提示框不会超出图表区域
-                enterable: true,   // 允许鼠标进入提示框
+                confine: true,
                 formatter: function(params) {
                     const data = params[0];
                     return `${data.name}<br/>
@@ -527,9 +559,9 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             xAxis: {
                 type: 'category',
-                data: data.daily_data.dates,
+                data: dailyData.dates,  // 使用对应类型的日期数据
                 axisLabel: {
-                    formatter: (value) => value.split('-')[2],  // 只显示日期
+                    formatter: (value) => value.split('-')[2],
                     interval: 'auto'
                 }
             },
@@ -540,18 +572,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             },
             series: [{
-                name: type === 'expense' ? '支出' : '收入',
+                name: currentType === 'expense' ? '支出' : '收入',
                 type: 'bar',
-                data: type === 'expense' ? data.daily_data.expenses : data.daily_data.incomes,
+                data: dailyData.amounts,  // 使用对应类型的金额数据
                 itemStyle: {
-                    color: type === 'expense' ? 'var(--danger-color)' : 'var(--success-color)',
+                    color: currentType === 'expense' ? 'var(--danger-color)' : 'var(--success-color)',
                     borderRadius: [4, 4, 0, 0]
                 },
                 emphasis: {
                     focus: 'series',
                     blurScope: 'coordinateSystem',
                     itemStyle: {
-                        color: type === 'expense' ? 'var(--danger-color)' : 'var(--success-color)',
+                        color: currentType === 'expense' ? 'var(--danger-color)' : 'var(--success-color)',
                         opacity: 0.8
                     }
                 },
@@ -561,15 +593,79 @@ document.addEventListener('DOMContentLoaded', function() {
             }]
         };
         
-        // 趋势图添加点击事件
+        // 饼图配置
+        const categoryData = data.categories[currentType];  // 根据当前类型获取对应的分类数据
+        const total = categoryData.amounts.reduce((a, b) => a + b, 0);
+        
+        const pieOption = {
+            tooltip: {
+                trigger: 'item',
+                formatter: function(params) {
+                    const percent = ((params.value / total) * 100).toFixed(1);
+                    return `${params.name}<br/>金额：${formatMoney(params.value)} 元<br/>占比：${percent}%`;
+                }
+            },
+            legend: {
+                type: 'scroll',
+                orient: 'vertical',
+                right: '5%',
+                top: 'middle',
+                formatter: name => {
+                    const index = categoryData.names.indexOf(name);
+                    const amount = categoryData.amounts[index];
+                    const percentage = ((amount / total) * 100).toFixed(1);
+                    return `${name} (${percentage}%)`;
+                },
+                textStyle: {
+                    fontSize: 14,
+                    fontFamily: '-apple-system, SF Pro Text'
+                }
+            },
+            series: [{
+                name: currentType === 'expense' ? '支出分类' : '收入分类',
+                type: 'pie',
+                radius: ['40%', '70%'],
+                center: ['35%', '50%'],
+                avoidLabelOverlap: true,
+                itemStyle: {
+                    borderRadius: 4,
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                },
+                data: categoryData.names.map((name, index) => ({
+                    name: name,
+                    value: categoryData.amounts[index],
+                    itemStyle: {
+                        color: window.getCategoryColor(name)
+                    },
+                    label: {
+                        show: (categoryData.amounts[index] / total * 100) > 2,
+                        formatter: params => {
+                            const percent = ((params.value / total) * 100).toFixed(1);
+                            return `${params.name}\n${percent}%`;
+                        }
+                    },
+                    labelLine: {
+                        show: (categoryData.amounts[index] / total * 100) > 2,
+                        length: 15,
+                        length2: 10,
+                        smooth: true
+                    }
+                })).sort((a, b) => b.value - a.value)
+            }]
+        };
+        
+        // 修改趋势图点击事件
+        trendChart.off('click');  // 移除之前的事件绑定
         trendChart.on('click', function(params) {
             if (params.componentType === 'series') {
                 const date = params.name;
-                const title = `${date} 交易明细`;
+                const title = `${date} ${currentType === 'expense' ? '支出' : '收入'}明细`;
                 
                 // 构建查询参数
                 const queryParams = new URLSearchParams({
-                    date: date
+                    date: date,
+                    type: currentType === 'expense' ? '支出' : '收入'  // 添加类型参数
                 });
                 
                 // 添加金额筛选参数
@@ -581,12 +677,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // 获取交易记录
                 fetch(`/api/transactions?${queryParams}`)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok');
-                        }
-                        return response.json();
-                    })
+                    .then(response => response.json())
                     .then(data => {
                         showTransactionModal(title, data.transactions);
                     })
@@ -597,125 +688,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        // 分类饼图配置
-        const pieOption = {
-            tooltip: {
-                trigger: 'item',
-                formatter: function(params) {
-                    const total = data.categories.amounts.reduce((a, b) => a + b, 0);
-                    const percent = ((params.value / total) * 100).toFixed(1);
-                    return `${params.name}<br/>金额：${formatMoney(params.value)} 元<br/>占比：${percent}%`;
-                }
-            },
-            legend: {
-                type: 'plain',
-                orient: 'vertical',
-                right: '5%',
-                top: 'middle',
-                formatter: (name) => {
-                    const index = data.categories.names.indexOf(name);
-                    const amount = data.categories.amounts[index];
-                    const total = data.categories.amounts.reduce((a, b) => a + b, 0);
-                    const percentage = ((amount / total) * 100).toFixed(1);
-                    return `${name} (${percentage}%)`;
-                },
-                textStyle: {
-                    fontSize: 14,
-                    fontFamily: '-apple-system, SF Pro Text'
-                },
-                width: '40%',
-                itemWidth: 14,
-                itemHeight: 14,
-                itemGap: 14,
-                layout: 'fixed',
-                columns: 2,
-                pageIconSize: 12,
-                pageTextStyle: {
-                    color: 'var(--secondary-text)'
-                }
-            },
-            series: [{
-                name: '支出分类',
-                type: 'pie',
-                radius: ['40%', '70%'],
-                center: ['35%', '50%'],
-                avoidLabelOverlap: true,
-                itemStyle: {
-                    borderRadius: 4,
-                    borderWidth: 2,
-                    borderColor: '#fff'
-                },
-                data: data.categories.names.map((category, index) => {
-                    const value = data.categories.amounts[index];
-                    const total = data.categories.amounts.reduce((a, b) => a + b, 0);
-                    const percent = (value / total) * 100;
-                    
-                    return {
-                        name: category,
-                        value: value,
-                        itemStyle: {
-                            color: window.getCategoryColor(category)
-                        },
-                        label: {
-                            show: percent > 2,
-                            formatter: `${category}\n${percent.toFixed(1)}%`
-                        },
-                        labelLine: {
-                            show: percent > 2,
-                            length: 15,
-                            length2: 10,
-                            smooth: true
-                        }
-                    };
-                }).sort((a, b) => b.value - a.value)
-            }]
-        };
-        
-        // 为饼图添加点击事件
-        categoryPieChart.on('click', function(params) {
-            if (params.componentType === 'series') {
-                const category = params.name;
-                const [year, month] = currentMonth.split('-');
-                const title = `${year}年${month}月 ${category}支出明细`;
-                
-                // 构建查询参数
-                const queryParams = new URLSearchParams({
-                    year: year,
-                    month: month,
-                    category: category
-                });
-                
-                // 添加金额筛选参数
-                if (currentFilter === 'large') {
-                    queryParams.append('min_amount', '1000');
-                } else if (currentFilter === 'small') {
-                    queryParams.append('max_amount', '1000');
-                }
-                
-                // 获取该分类的交易记录
-                fetch(`/api/transactions?${queryParams}`)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok');
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        showTransactionModal(title, data.transactions);
-                    })
-                    .catch(error => {
-                        console.error('Error fetching transaction data:', error);
-                        showToast('获取交易数据失败，请重试');
-                    });
-            }
-        });
-        
-        trendChart.setOption(option);
+        trendChart.setOption(trendOption);
         categoryPieChart.setOption(pieOption);
     }
     
     // 绑定月份切换按钮事件
     document.getElementById('prevMonth').addEventListener('click', function() {
+        if (!Array.isArray(availableMonths)) {
+            console.error('availableMonths is not an array:', availableMonths);
+            return;
+        }
         const currentIndex = availableMonths.indexOf(currentMonth);
         if (currentIndex < availableMonths.length - 1) {
             loadData(availableMonths[currentIndex + 1]);
@@ -723,48 +705,27 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     document.getElementById('nextMonth').addEventListener('click', function() {
+        if (!Array.isArray(availableMonths)) {
+            console.error('availableMonths is not an array:', availableMonths);
+            return;
+        }
         const currentIndex = availableMonths.indexOf(currentMonth);
         if (currentIndex > 0) {
             loadData(availableMonths[currentIndex - 1]);
         }
     });
     
-    // 修改切换按钮事件监听
+    // 绑定切换按钮事件
     document.querySelectorAll('.toggle-btn').forEach(btn => {
         btn.addEventListener('click', function() {
-            if (!currentData) return;  // 如果没有数据，直接返回
-            
             // 更新按钮状态
-            document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.toggle-btn').forEach(b => 
+                b.classList.remove('active'));
             this.classList.add('active');
-
-            // 获取当前选中的类型
-            const type = this.dataset.type;
             
-            // 更新图表数据
-            const option = trendChart.getOption();
-            option.series[0] = {
-                name: type === 'expense' ? '支出' : '收入',
-                type: 'bar',
-                data: type === 'expense' ? currentData.daily_data.expenses : currentData.daily_data.incomes,
-                itemStyle: {
-                    color: type === 'expense' ? 'var(--danger-color)' : 'var(--success-color)',
-                    borderRadius: [4, 4, 0, 0]
-                },
-                emphasis: {
-                    itemStyle: {
-                        color: type === 'expense' ? 'var(--danger-color)' : 'var(--success-color)',
-                        opacity: 0.8
-                    }
-                },
-                label: {
-                    show: true,
-                    position: 'top',
-                    formatter: (params) => formatMoney(params.value),
-                    fontSize: 12
-                }
-            };
-            trendChart.setOption(option);
+            // 更新当前类型并重新渲染图表
+            currentType = this.dataset.type;
+            updateCharts(currentData);
         });
     });
     
@@ -783,12 +744,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // 初始化
+    // 修改初始化顺序
     initCharts();
-    loadData();
+    loadAvailableMonths();  // 改为先加载可用月份
 });
 
-// 添加 updateComparison 函数
+// 修改 updateComparison 函数中的百分比显示
 function updateComparison(element, change, changeRate, label, isCount = false) {
     if (!element) return;
     
@@ -812,14 +773,16 @@ function updateComparison(element, change, changeRate, label, isCount = false) {
             icon.className = 'fas fa-arrow-up trend-icon up';
             let text = `较上月增加 ${isCount ? Math.abs(change) + ' 笔' : formatMoney(Math.abs(change)) + ' 元'}`;
             if (changeRate !== null && changeRate !== undefined) {
-                text += ` (${changeRate > 0 ? '+' : ''}${changeRate}%)`;
+                // 修改这里：使用 toFixed(1) 显示一位小数
+                text += ` (${changeRate > 0 ? '+' : ''}${changeRate.toFixed(1)}%)`;
             }
             value.textContent = text;
         } else {
             icon.className = 'fas fa-arrow-down trend-icon down';
             let text = `较上月减少 ${isCount ? Math.abs(change) + ' 笔' : formatMoney(Math.abs(change)) + ' 元'}`;
             if (changeRate !== null && changeRate !== undefined) {
-                text += ` (${changeRate}%)`;
+                // 修改这里：使用 toFixed(1) 显示一位小数
+                text += ` (${changeRate.toFixed(1)}%)`;
             }
             value.textContent = text;
         }
