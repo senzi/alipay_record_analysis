@@ -28,8 +28,8 @@
 
 1. 克隆仓库：
 ~~~bash
-git clone https://github.com/hessel/alipay-analysis.git
-cd alipay-analysis
+git clone https://github.com/Hessel2333/alipay_record_analysis.git
+cd alipay_record_analysis
 ~~~
 
 2. 安装依赖：
