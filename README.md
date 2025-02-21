@@ -28,7 +28,7 @@
 
 1. 克隆仓库：
 ~~~bash
-git clone https://github.com/yourusername/alipay-analysis.git
+git clone https://github.com/hessel/alipay-analysis.git
 cd alipay-analysis
 ~~~
 
