@@ -13,9 +13,20 @@ import threading
 from time import sleep
 import atexit
 import numpy as np
+from secrets import token_hex
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'  # 添加 session 密钥
+
+# 在 app 配置后添加
+app.config.update(
+    SESSION_COOKIE_SECURE=True,  # 只在 HTTPS 下发送 cookie
+    SESSION_COOKIE_HTTPONLY=True,  # 防止 JavaScript 访问 cookie
+    SESSION_COOKIE_SAMESITE='Lax',  # 防止 CSRF 攻击
+    PERMANENT_SESSION_LIFETIME=timedelta(minutes=30)  # 设置会话过期时间
+)
+
+# 从环境变量获取密钥，如果没有则生成一个新的
+app.secret_key = os.environ.get('FLASK_SECRET_KEY') or token_hex(32)
 
 # 配置日志
 logging.basicConfig(
@@ -41,12 +52,27 @@ def allowed_file(filename):
 def get_session_dir():
     """获取当前会话的临时目录"""
     if 'user_id' not in session:
-        session['user_id'] = str(uuid.uuid4())
+        # 使用更安全的方式生成用户ID
+        session['user_id'] = f"user_{token_hex(16)}"
+        # 记录会话创建时间
+        session['created_at'] = datetime.now().timestamp()
+        
+    # 检查会话是否过期
+    if 'created_at' in session:
+        session_age = datetime.now().timestamp() - session['created_at']
+        if session_age > 1800:  # 30分钟过期
+            # 清理旧文件
+            old_session_dir = os.path.join(app.config['UPLOAD_FOLDER'], session['user_id'])
+            if os.path.exists(old_session_dir):
+                shutil.rmtree(old_session_dir)
+            # 重新生成会话
+            session.clear()
+            return get_session_dir()
     
     session_dir = os.path.join(app.config['UPLOAD_FOLDER'], session['user_id'])
     
     if not os.path.exists(session_dir):
-        os.makedirs(session_dir, mode=0o700)
+        os.makedirs(session_dir, mode=0o700)  # 确保目录权限正确
     
     return session_dir
 
@@ -2115,6 +2141,32 @@ def yearly_analysis():
     except Exception as e:
         logger.error(f"Error in yearly analysis: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.before_request
+def check_session_expiry():
+    if 'created_at' in session:
+        session_age = datetime.now().timestamp() - session['created_at']
+        if session_age > 1800:  # 30分钟过期
+            session.clear()
+            return redirect(url_for('index'))
+
+@app.teardown_request
+def cleanup_session(exception=None):
+    """请求结束时检查并清理过期的会话文件"""
+    try:
+        upload_folder = app.config['UPLOAD_FOLDER']
+        current_time = datetime.now().timestamp()
+        
+        # 遍历所有会话目录
+        for user_dir in os.listdir(upload_folder):
+            dir_path = os.path.join(upload_folder, user_dir)
+            if os.path.isdir(dir_path):
+                dir_stat = os.stat(dir_path)
+                # 如果目录超过30分钟未修改，则删除
+                if current_time - dir_stat.st_mtime > 1800:
+                    shutil.rmtree(dir_path)
+    except Exception as e:
+        logger.error(f"Session cleanup error: {str(e)}")
 
 if __name__ == '__main__':
     # 判断是否在生产环境
