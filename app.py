@@ -44,7 +44,7 @@ UPLOAD_FOLDER = './tmp/alipay_analysis'  # 临时文件根目录
 ALLOWED_EXTENSIONS = {'csv'}
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制文件大小为16MB
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -76,7 +76,39 @@ def get_session_dir():
     
     return session_dir
 
-@lru_cache(maxsize=1)
+def user_cache(f):
+    """用户级别的缓存装饰器"""
+    cache = {}
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # 获取当前用户ID
+        user_id = session.get('user_id')
+        if not user_id:
+            return f(*args, **kwargs)
+        
+        # 检查缓存是否过期
+        if user_id in cache:
+            cache_time, cached_data = cache[user_id]
+            if datetime.now().timestamp() - cache_time < 300:  # 5分钟缓存
+                return cached_data
+        
+        # 执行函数并缓存结果
+        result = f(*args, **kwargs)
+        cache[user_id] = (datetime.now().timestamp(), result)
+        
+        # 清理其他用户的缓存
+        current_time = datetime.now().timestamp()
+        expired_keys = [k for k, v in cache.items() 
+                       if current_time - v[0] > 300]
+        for k in expired_keys:
+            del cache[k]
+        
+        return result
+    
+    return decorated_function
+
+@user_cache
 def load_alipay_data():
     try:
         session_dir = get_session_dir()
@@ -887,7 +919,11 @@ def not_found_error(error):
 
 @app.errorhandler(500)
 def internal_error(error):
-    return "服务器内部错误 - 500", 500
+    logger.error(f"Internal Server Error: {str(error)}")
+    return jsonify({
+        'success': False,
+        'error': '服务器内部错误，请稍后重试'
+    }), 500
 
 @app.route('/api/overview_data')
 def get_overview_data():
@@ -1526,53 +1562,40 @@ def settings():
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'error': '没有文件被上传'})
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'success': False, 'error': '没有选择文件'})
-    
-    if file and allowed_file(file.filename):
-        try:
-            # 获取会话目录
-            session_dir = get_session_dir()
+    try:
+        logger.info("Starting file upload...")
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': '没有文件被上传'}), 400
             
-            # 保存文件
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(session_dir, filename)
-            file.save(filepath)
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': '未选择文件'}), 400
             
-            try:
-                # 验证文件格式...
-                
-                # 清除数据缓存
-                load_alipay_data.cache_clear()
-                
-                # 更新会话开始时间（在最后一个文件上传成功后）
-                session['session_start'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                
-                return jsonify({
-                    'success': True,
-                    'filename': filename,
-                    'message': '上传成功'
-                })
-                
-            except Exception as e:
-                # 如果验证失败，删除文件...
-                os.remove(filepath)
-                return jsonify({
-                    'success': False,
-                    'error': f'验证文件失败: {str(e)}'
-                }), 500
+        if not allowed_file(file.filename):
+            return jsonify({'success': False, 'error': '不支持的文件类型'}), 400
             
-        except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': f'处理文件时出错: {str(e)}'
-            })
-    
-    return jsonify({'success': False, 'error': '不支持的文件类型'})
+        # 确保目录存在
+        session_dir = get_session_dir()
+        if not os.path.exists(session_dir):
+            os.makedirs(session_dir, mode=0o700)
+            
+        # 安全地保存文件
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(session_dir, filename)
+        file.save(filepath)
+        
+        # 更新会话时间戳
+        session['created_at'] = datetime.now().timestamp()
+        
+        return jsonify({
+            'success': True,
+            'filename': filename,
+            'message': '文件上传成功'
+        })
+        
+    except Exception as e:
+        logger.exception("Upload failed with error:")  # 这会记录完整的堆栈跟踪
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/files')
 def list_files():
@@ -2167,6 +2190,20 @@ def cleanup_session(exception=None):
                     shutil.rmtree(dir_path)
     except Exception as e:
         logger.error(f"Session cleanup error: {str(e)}")
+
+# 在应用启动时确保上传目录存在
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+# 确保目录权限正确
+def ensure_upload_dir():
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER, mode=0o700)
+    else:
+        os.chmod(UPLOAD_FOLDER, 0o700)
+
+# 在应用启动时调用
+ensure_upload_dir()
 
 if __name__ == '__main__':
     # 判断是否在生产环境
